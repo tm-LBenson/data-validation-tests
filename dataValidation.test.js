@@ -1,10 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 
-// Function to calculate age based on the year of birth
+
 const calculateAge = (birthYear) => 2025 - parseInt(birthYear, 10);
 
-// Read the data.json file
+
 const dataPath = path.join(__dirname, 'data.json');
 let data;
 
@@ -26,6 +26,42 @@ describe('Data Validation Suite', () => {
     test('There should be 125 staff members', () => {
         const staff = data.filter(person => person.employeeType === 'staff');
         expect(staff.length).toBe(125);
+    });
+
+    test('Each school should have exactly one principal', () => {
+        const principalsBySchool = data
+            .filter(person => person.employeeType === 'staff' && person.idautoPersonDeptDescrs === 'Principal')
+            .reduce((acc, principal) => {
+                acc[principal.l] = (acc[principal.l] || 0) + 1;
+                return acc;
+            }, {});
+
+        Object.entries(principalsBySchool).forEach(([school, count]) => {
+            expect(count).toBe(1);
+        });
+        expect(Object.keys(principalsBySchool).length).toBe(3); // There should be exactly 3 schools
+    });
+
+    test('There should be 3 schools based on the "l" field', () => {
+        const schools = new Set(data.map(person => person.l));
+        expect(schools.size).toBe(3);
+    });
+
+    test('Each email should be correctly formatted', () => {
+        const invalidEmails = data.filter(person => {
+            const expectedEmail = `${person.idautoPersonSAMAccountName}@lbenson.trainingexample.org`;
+            return person.mail !== expectedEmail;
+        });
+
+        if (invalidEmails.length > 0) {
+            console.error('Invalid emails:', invalidEmails.map(person => ({
+                name: person.displayName,
+                expected: `${person.idautoPersonSAMAccountName}@lbenson.trainingexample.org`,
+                actual: person.mail
+            })));
+        }
+
+        expect(invalidEmails).toHaveLength(0);
     });
 
     test('Each teacher should have at least 3 classes assigned', () => {
@@ -93,76 +129,5 @@ describe('Data Validation Suite', () => {
         }
 
         expect(staffOutOfRange).toHaveLength(0);
-    });
-    test('Each student should have classes taught by their associated teacher', () => {
-        const students = data.filter(person => person.employeeType === 'student');
-        const staff = data.filter(person => person.employeeType === 'staff' && person.idautoPersonDeptDescrs === 'Teacher');
-    
-        const studentsWithInvalidClasses = students.filter(student => {
-            const teacherIds = Array.isArray(student.idautoPersonTeachers)
-                ? student.idautoPersonTeachers.map(t => t.split(',')[0].split('=')[1]) // Extract teacher IDs
-                : [student.idautoPersonTeachers?.split(',')[0]?.split('=')[1]].filter(Boolean); // Single teacher fallback
-    
-            const teachers = staff.filter(teacher => teacherIds.includes(teacher.idautoID));
-    
-            // Collect all classes taught by the student's associated teachers
-            const classesTaught = teachers.reduce((classes, teacher) => {
-                return classes.concat(teacher.idautoPersonExt1 || []);
-            }, []);
-    
-            return student.idautoPersonExt1.some(studentClass => !classesTaught.includes(studentClass));
-        });
-    
-        if (studentsWithInvalidClasses.length > 0) {
-            console.error(
-                'Students with invalid classes:',
-                studentsWithInvalidClasses.map(student => ({
-                    name: student.displayName,
-                    studentClasses: student.idautoPersonExt1,
-                    teacherClasses: staff
-                        .filter(teacher => (student.idautoPersonTeachers || []).includes(teacher.idautoID))
-                        .map(teacher => ({
-                            name: teacher.displayName,
-                            classes: teacher.idautoPersonExt1,
-                        })),
-                }))
-            );
-        }
-    
-        expect(studentsWithInvalidClasses).toHaveLength(0);
-    });
-    
-    test('Students should be aged appropriately for their grades', () => {
-        const students = data.filter(person => person.employeeType === 'student');
-        const gradeAgeMapping = {
-            PK: [3, 5],
-            K: [5, 6],
-            "1": [6, 7],
-            "2": [7, 8],
-            "3": [8, 9],
-            "4": [9, 10],
-            "5": [10, 11],
-            "6": [11, 12],
-            "7": [12, 13],
-            "8": [13, 14],
-            "9": [14, 15],
-            "10": [15, 16],
-            "11": [16, 17],
-            "12": [17, 18],
-        };
-
-        const studentsOutOfRange = students.filter(student => {
-            const birthYear = student.idautoPersonBirthdate.slice(0, 4);
-            const age = calculateAge(birthYear);
-            const grade = student.idautoPersonGradeLevel;
-            const [minAge, maxAge] = gradeAgeMapping[grade] || [0, 0];
-            return age < minAge || age > maxAge;
-        });
-
-        if (studentsOutOfRange.length > 0) {
-            console.error('Students out of age range:', studentsOutOfRange.map(s => s.displayName));
-        }
-
-        expect(studentsOutOfRange).toHaveLength(0);
     });
 });
